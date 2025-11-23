@@ -1,0 +1,155 @@
+<!-- --                                                                                             
+--                                                                                         
+                                          ,──,                                           
+                                        ,──.'│                                           
+                          ,───,      ,──,  │ :                      ,───,                
+         .───.          ,───.'│   ,───.'│  : '      .──.   ,───.  ,───.'│                
+        ╱. .╱│          │   │ :   ;   : │  │ ;    .──,`│  '   ,'╲ │   │ :     .──.──.    
+     .─'─. ' │   ,───.  :   : :   │   │ : _' │    │  │.  ╱   ╱   │:   : :    ╱  ╱    '   
+    ╱___╱ ╲: │  ╱     ╲ :     │,─.:   : │.'  │    '──`_ .   ; ,. ::     │,─.│  :  ╱`.╱   
+ .─'.. '   ' . ╱    ╱  ││   : '  ││   ' '  ; :    ,──,'│'   │ │: :│   : '  ││  :  ;_     
+╱___╱ ╲:     '.    ' ╱ ││   │  ╱ :╲   ╲  .'. │    │  │ ''   │ .; :│   │  ╱ : ╲  ╲    `.  
+.   ╲  ' .╲   '   ;   ╱│'   : │: │ `───`:  │ '    :  │ ││   :    │'   : │: │  `────.   ╲ 
+ ╲   ╲   ' ╲ │'   │  ╱ ││   │ '╱ :      '  ; │  __│  : ' ╲   ╲  ╱ │   │ '╱ : ╱  ╱`──'  ╱ 
+  ╲   ╲  │──" │   :    ││   :    │      │  : ;.'__╱╲_: │  `────'  │   :    │'──'.     ╱  
+   ╲   ╲ │     ╲   ╲  ╱ ╱    ╲  ╱       '  ,╱ │   :    :          ╱    ╲  ╱   `──'───'   
+    '───"       `────'  `─'────'        '──'   ╲   ╲  ╱           `─'────'               
+                                                `──`─'                                    -->
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+<meta charset="UTF-8">
+<title>لعبة تجنب الرصاص باليد</title>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
+<style>
+body {
+  font-family: "Cairo", sans-serif;
+  background: #222;
+  text-align: center;
+  overflow: hidden;
+}
+canvas {
+  border: 3px solid #444;
+  background: #333;
+  display: block;
+  margin: 20px auto;
+  border-radius: 10px;
+}
+button {
+  background: #f71202;
+  color: white;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 18px;
+}
+button:hover {
+  background: #c0b40c;
+}
+#score { color:white; font-size:20px; }
+</style>
+</head>
+<body>
+<h1>🎮 تجنب الرصاص باليد 👋</h1>
+<p>حرّك يدك على الكاميرا: ✋ يمين | ✊ يسار</p>
+<button onclick="init()">ابدأ اللعبة</button>
+<div id="score">النقاط: 0</div>
+<canvas id="gameCanvas" width="400" height="400"></canvas>
+<div id="webcam-container"></div>
+<div id="label-container"></div>
+
+<audio id="hitSound" src="https://freesound.org/data/previews/82/82921_1022653-lq.mp3"></audio>
+
+<script>
+const URL = "https://teachablemachine.withgoogle.com/models/9CmidnnAQ/"; 
+let model, webcam, labelContainer, maxPredictions;
+
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+// اللاعب
+let player = {x:180, y:350, w:40, h:40, speed:10};
+let bullets = [];
+let score = 0;
+let gameOver = false;
+
+function spawnBullet(){
+  const x = Math.random() * (canvas.width-10);
+  bullets.push({x:x, y:0, size:10, dy:3});
+}
+
+// Teachable Machine
+async function init(){
+  const modelURL = URL+"model.json";
+  const metadataURL = URL+"metadata.json";
+  model = await tmImage.load(modelURL, metadataURL);
+  maxPredictions = model.getTotalClasses();
+
+  webcam = new tmImage.Webcam(200,200,true);
+  await webcam.setup();
+  await webcam.play();
+  document.getElementById("webcam-container").appendChild(webcam.canvas);
+
+  labelContainer = document.getElementById("label-container");
+  for(let i=0;i<maxPredictions;i++){ labelContainer.appendChild(document.createElement("div")); }
+
+  loopAI();
+  gameLoop();
+  setInterval(spawnBullet, 1000); // توليد الرصاص كل ثانية
+}
+
+// التحكم باليد
+async function loopAI(){
+  webcam.update();
+  const prediction = await model.predict(webcam.canvas);
+
+  let up = prediction.find(p=>p.className.toLowerCase().includes("up"));
+  let down = prediction.find(p=>p.className.toLowerCase().includes("down"));
+
+  if(up && up.probability>0.8) player.x += player.speed;
+  if(down && down.probability>0.8) player.x -= player.speed;
+
+  if(player.x<0) player.x=0;
+  if(player.x+player.w>canvas.width) player.x = canvas.width - player.w;
+
+  for(let i=0;i<maxPredictions;i++){
+    labelContainer.childNodes[i].innerHTML = prediction[i].className+": "+prediction[i].probability.toFixed(2);
+  }
+
+  requestAnimationFrame(loopAI);
+}
+
+// اللعبة
+function gameLoop(){
+  if(gameOver) return;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  // اللاعب
+  ctx.fillStyle="blue";
+  ctx.fillRect(player.x, player.y, player.w, player.h);
+
+  // الرصاص
+  ctx.fillStyle="red";
+  bullets.forEach((b,i)=>{
+    b.y += b.dy;
+    ctx.fillRect(b.x,b.y,b.size,b.size);
+
+    // اصطدام باللاعب
+    if(b.x < player.x + player.w && b.x + b.size > player.x &&
+       b.y < player.y + player.h && b.y + b.size > player.y){
+      gameOver=true;
+      document.getElementById("hitSound").play();
+      alert("💀 خسرت! النقاط: "+score);
+    }
+
+    // إزالة الرصاص إذا خرج من الشاشة
+    if(b.y>canvas.height) { bullets.splice(i,1); score++; document.getElementById("score").innerText="النقاط: "+score; }
+  });
+
+  requestAnimationFrame(gameLoop);
+}
+</script>
+</body>
+</html>
